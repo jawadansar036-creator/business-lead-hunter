@@ -1,11 +1,11 @@
 
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 type SearchState = "idle" | "loading" | "success" | "error";
-
-const suggestions = ["Dental clinics", "Shoe stores", "Hair salons", "Restaurants"];
+type Lead = Record<string, string | number | boolean | null>;
 
 export default function Home() {
   const [businessType, setBusinessType] = useState("");
@@ -15,6 +15,9 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileUrl, setFileUrl] = useState("");
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
     return () => {
@@ -25,11 +28,17 @@ export default function Home() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (fileUrl) URL.revokeObjectURL(fileUrl);
-    setFileUrl("");
-    setFileName("");
     setState("loading");
     setMessage("Your search is running. This can take a few minutes…");
+    setLeads([]);
+    setColumns([]);
+    setFilter("");
+    setFileName("");
+
+    if (fileUrl) {
+      URL.revokeObjectURL(fileUrl);
+      setFileUrl("");
+    }
 
     try {
       const response = await fetch("/api/leads", {
@@ -44,14 +53,13 @@ export default function Home() {
 
       if (!response.ok) {
         const contentType = response.headers.get("content-type") || "";
-        let detail = "The search could not be completed. Please try again.";
+        let detail = "The search could not be completed.";
 
         if (contentType.includes("application/json")) {
           const data = await response.json();
           detail = data.error || detail;
         } else {
-          const text = await response.text();
-          if (text) detail = text.slice(0, 500);
+          detail = (await response.text()).slice(0, 500) || detail;
         }
 
         throw new Error(detail);
@@ -60,20 +68,43 @@ export default function Home() {
       const blob = await response.blob();
 
       if (!blob.size) {
-        throw new Error("The workflow returned an empty file.");
+        throw new Error("The workflow returned an empty Excel file.");
       }
+
+      const workbook = XLSX.read(await blob.arrayBuffer(), {
+        type: "array",
+      });
+
+      const firstSheetName = workbook.SheetNames[0];
+
+      if (!firstSheetName) {
+        throw new Error("The Excel file does not contain a worksheet.");
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      const rows = XLSX.utils.sheet_to_json<Lead>(worksheet, {
+        defval: "",
+        raw: false,
+      });
+
+      if (!rows.length) {
+        throw new Error("The Excel file was generated, but it contains no lead records.");
+      }
+
+      const headers = Object.keys(rows[0]);
 
       const disposition = response.headers.get("content-disposition") || "";
       const match = disposition.match(/filename="?([^";]+)"?/i);
       const downloadName =
         match?.[1] || `business-leads-${Date.now()}.xlsx`;
 
-      const url = URL.createObjectURL(blob);
-
-      setFileUrl(url);
+      setLeads(rows);
+      setColumns(headers);
       setFileName(downloadName);
+      setFileUrl(URL.createObjectURL(blob));
       setState("success");
-      setMessage("Your Excel file is ready. Click below when you want to download it.");
+      setMessage(`Successfully loaded ${rows.length} leads from your Excel file.`);
     } catch (error) {
       setState("error");
       setMessage(
@@ -84,12 +115,24 @@ export default function Home() {
     }
   }
 
+  const filteredLeads = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+
+    if (!query) return leads;
+
+    return leads.filter((lead) =>
+      columns.some((column) =>
+        String(lead[column] ?? "").toLowerCase().includes(query)
+      )
+    );
+  }, [leads, columns, filter]);
+
   function downloadExcel() {
-    if (!fileUrl || !fileName) return;
+    if (!fileUrl) return;
 
     const anchor = document.createElement("a");
     anchor.href = fileUrl;
-    anchor.download = fileName;
+    anchor.download = fileName || "business-leads.xlsx";
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -155,8 +198,9 @@ export default function Home() {
                 disabled={isLoading}
               />
             </div>
+
             <div className="suggestions" aria-label="Business type suggestions">
-              {suggestions.map((item) => (
+              {["Dental clinics", "Shoe stores", "Hair salons", "Restaurants"].map((item) => (
                 <button
                   className="suggestion"
                   type="button"
@@ -215,30 +259,85 @@ export default function Home() {
                 {state === "loading" ? <span className="spinner dark" /> : state === "success" ? <CheckIcon /> : <AlertIcon />}
               </span>
               <span>
-                <strong>
-                  {state === "success" ? "Search complete" : state === "error" ? "Search needs attention" : "Working on your search"}
-                </strong>
+                <strong>{state === "success" ? "Search complete" : state === "error" ? "Search needs attention" : "Working on your search"}</strong>
                 <small>{message}</small>
-
-                {state === "success" && fileUrl && (
-                  <button
-                    type="button"
-                    className="submit-button download-button"
-                    onClick={downloadExcel}
-                  >
-                    <FileIcon /> Download Excel
-                    <ArrowIcon />
-                  </button>
-                )}
-
-                {fileName && state === "success" && (
-                  <small className="file-name">Ready: {fileName}</small>
-                )}
               </span>
             </div>
           )}
         </div>
       </section>
+
+      {state === "success" && leads.length > 0 && (
+        <section className="shell lead-results" id="lead-results">
+          <div className="results-heading">
+            <div>
+              <div className="eyebrow">YOUR SEARCH RESULTS</div>
+              <h2>Your business leads</h2>
+              <p>{leads.length} records extracted directly from your Excel file.</p>
+            </div>
+            <button className="submit-button download-button" type="button" onClick={downloadExcel}>
+              <FileIcon /> Download Excel
+            </button>
+          </div>
+
+          <div className="results-toolbar">
+            <div className="results-count">
+              <strong>{filteredLeads.length}</strong> of {leads.length} leads
+            </div>
+            <input
+              className="results-search"
+              type="search"
+              placeholder="Search across all columns..."
+              aria-label="Search leads"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
+
+          <div className="table-container">
+            <table className="leads-table">
+              <thead>
+                <tr>
+                  {columns.map((column) => (
+                    <th key={column}>{column.replace(/_/g, " ")}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLeads.map((lead, index) => (
+                  <tr key={index}>
+                    {columns.map((column) => {
+                      const value = lead[column];
+                      const text = String(value ?? "");
+
+                      return (
+                        <td key={column}>
+                          {/^https?:\/\//i.test(text) ? (
+                            <a href={text} target="_blank" rel="noopener noreferrer">
+                              Open link ↗
+                            </a>
+                          ) : text || "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {filteredLeads.length === 0 && (
+                  <tr>
+                    <td colSpan={columns.length} className="empty-results">
+                      No matching leads found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="table-note">
+            Scroll horizontally to see all columns. Your results are displayed
+            here without needing to download the Excel file.
+          </p>
+        </section>
+      )}
 
       <section className="metrics shell" id="how-it-works">
         <div className="metrics-heading">
@@ -263,7 +362,7 @@ export default function Home() {
             <span className="step-number">03</span>
             <div className="step-icon"><FileIcon /></div>
             <h3>Export</h3>
-            <p>Your Excel file is ready to download when you choose.</p>
+            <p>View results online or download the Excel spreadsheet.</p>
           </article>
         </div>
       </section>
