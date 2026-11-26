@@ -277,3 +277,148 @@ form label { display: block; margin: 19px 0 8px; font-size: 12px; font-weight: 7
     width: 100%;
   }
 }
+
+.lead-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.lead-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 14px;
+  background: var(--card, #fff);
+}
+
+.lead-summary-card span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lead-summary-card strong {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.prospect-summary {
+  border-color: #86b99b;
+}
+
+.lead-source-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  padding: 14px 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.lead-source-note strong {
+  color: inherit;
+}
+
+.lead-filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lead-filter-button {
+  padding: 9px 13px;
+  border: 1px solid #dce2e8;
+  border-radius: 9px;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.lead-filter-button.active {
+  background: #172f42;
+  color: white;
+  border-color: #172f42;
+}
+
+.lead-status-badge {
+  display: inline-block;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #eef2f6;
+  color: #475569;
+  font-size: 11px;
+  text-transform: capitalize;
+  margin: 3px 0;
+}
+
+.prospect-badge {
+  background: #e5f5eb;
+  color: #17633a;
+}
+
+.candidate-badge {
+  background: #fff3d9;
+  color: #875b0b;
+}
+
+.website-badge {
+  background: #e7efff;
+  color: #2854a0;
+}
+
+.prospect-row {
+  background: #fbfefc;
+}
+
+.verification-note {
+  display: block;
+  margin-top: 5px;
+  color: #8a6b2d;
+  font-size: 11px;
+}
+
+.candidate-links {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.candidate-links a {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  .lead-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .results-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lead-filter-buttons {
+    width: 100%;
+  }
+}
+
+@media (max-width: 450px) {
+  .lead-summary-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+  }
+
+  .lead-summary-card {
+    padding: 13px;
+  }
+
+  .lead-summary-card strong {
+    font-size: 24px;
+  }
+}

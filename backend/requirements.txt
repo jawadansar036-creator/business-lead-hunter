@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+httpx
+langchain
+langgraph
+pandas
+openpyxl
+python-dotenv
