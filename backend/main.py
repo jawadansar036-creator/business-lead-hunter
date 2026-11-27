@@ -1,4 +1,5 @@
 import os
+import re
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,22 +13,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Production and local frontend URLs
-allowed_origins = [
+# Build the list of allowed origins.
+# FRONTEND_URL env var supports any deployed frontend (Vercel, custom domain, etc.)
+_allowed_origins: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://business-lead-hunter-sj22.vercel.app",
 ]
 
-# Optional additional frontend URL from environment
-frontend_url = os.getenv("FRONTEND_URL")
+_frontend_urls = os.getenv("FRONTEND_URL", "")
+for _url in _frontend_urls.split(","):
+    _url = _url.strip().rstrip("/")
+    if _url:
+        _allowed_origins.append(_url)
 
-if frontend_url:
-    allowed_origins.append(frontend_url.rstrip("/"))
+# Allow all *.vercel.app preview URLs automatically via regex
+_allow_origin_regex = r"https://.*\.vercel\.app"
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=_allowed_origins,
+    allow_origin_regex=_allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
