@@ -1,3 +1,4 @@
+import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,13 +12,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Frontend access
+# Production and local frontend URLs
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://business-lead-hunter-sj22.vercel.app",
+]
+
+# Optional additional frontend URL from environment
+frontend_url = os.getenv("FRONTEND_URL")
+
+if frontend_url:
+    allowed_origins.append(frontend_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,7 +52,6 @@ async def health():
 
 @app.post("/api/search")
 async def search_leads(request: LeadSearchRequest):
-
     try:
         result = await generate_business_leads(
             location=request.target_location,
