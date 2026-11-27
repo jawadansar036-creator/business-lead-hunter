@@ -66,32 +66,112 @@ export default function Home() {
     }
 
     try {
-      const apiUrl =
+      const apiUrl = (
         process.env.NEXT_PUBLIC_API_URL ||
-        "http://127.0.0.1:8000";
+        "http://127.0.0.1:8000"
+      ).replace(/\/+$/, "");
 
-      const response = await fetch(`${apiUrl}/api/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          business_type: businessType.trim(),
-          target_location: location.trim(),
-          maximum_leads: Number(maximumLeads),
-        }),
-      });
+      let data: any;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : JSON.stringify(
-                data.detail || "Business search failed."
-              )
+      if (apiUrl.includes("hf.space") || apiUrl.includes("huggingface.co")) {
+        // Gradio Space API (2-step POST + SSE result)
+        const initResponse = await fetch(
+          `${apiUrl}/gradio_api/call/search_leads`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: [
+                businessType.trim(),
+                location.trim(),
+                Number(maximumLeads),
+              ],
+            }),
+          }
         );
+
+        if (!initResponse.ok) {
+          const errText = await initResponse.text();
+          throw new Error(errText || "Failed to start search on backend.");
+        }
+
+        const { event_id } = await initResponse.json();
+        if (!event_id) {
+          throw new Error("Backend did not return a search job ID.");
+        }
+
+        const resultResponse = await fetch(
+          `${apiUrl}/gradio_api/call/search_leads/${event_id}`
+        );
+
+        if (!resultResponse.ok) {
+          const errText = await resultResponse.text();
+          throw new Error(errText || "Failed to fetch search results.");
+        }
+
+        const sseText = await resultResponse.text();
+        const lines = sseText.split(/\r?\n/);
+        let lastEvent = "";
+        let completePayload: any = null;
+        let errorPayload: string | null = null;
+
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            lastEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const raw = line.slice(5).trim();
+            if (lastEvent === "error") {
+              errorPayload = raw;
+            } else if (lastEvent === "complete") {
+              try {
+                const parsed = JSON.parse(raw);
+                completePayload = Array.isArray(parsed) ? parsed[0] : parsed;
+              } catch {
+                // Ignore malformed intermediate chunks
+              }
+            }
+          }
+        }
+
+        if (errorPayload) {
+          throw new Error(errorPayload);
+        }
+
+        if (!completePayload) {
+          throw new Error("Search completed without returning data.");
+        }
+
+        if (completePayload.error) {
+          throw new Error(completePayload.error);
+        }
+
+        data = completePayload;
+      } else {
+        const response = await fetch(`${apiUrl}/api/search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            business_type: businessType.trim(),
+            target_location: location.trim(),
+            maximum_leads: Number(maximumLeads),
+          }),
+        });
+
+        data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            typeof data.detail === "string"
+              ? data.detail
+              : JSON.stringify(
+                  data.detail || "Business search failed."
+                )
+          );
+        }
       }
 
       const rows = Array.isArray(data.businesses)
